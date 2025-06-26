@@ -24,7 +24,25 @@ class PetState(Enum):
 
 
 class PetAssetManager:
-    """Manages pet assets and animations."""
+    """
+    Manages pet assets and animations.
+    
+    Attributes:
+        pet_name: Name of the pet (e.g., "Patamon Shimeji")
+        assets_path: Path to the pet's assets directory
+        images_path: Path to the pet's sprite images
+        conf_path: Path to the pet's configuration files
+        sprites: Dictionary mapping sprite names to file paths
+        animations: Dictionary mapping action names to animation sequences
+    
+    Methods:
+        __init__(pet_name): Initialize asset manager for a specific pet
+        _load_sprites(): Private method to load all PNG sprite files
+        _load_animations(): Private method to parse actions.xml and load animations
+        get_sprite_path(sprite_name): Get full file path for a sprite image
+        get_animation(action_name): Get animation sequence for a specific action
+        get_available_actions(): Get list of all available action names
+    """
     
     def __init__(self, pet_name: str):
         self.pet_name = pet_name
@@ -94,7 +112,24 @@ class PetAssetManager:
 
 @dataclass
 class Pet:
-    """Represents a virtual pet."""
+    """
+    Represents a virtual pet.
+    
+    Attributes:
+        name: Unique name identifier for the pet
+        x: X-coordinate position on screen (default: 100)
+        y: Y-coordinate position on screen (default: 100)
+        state: Current behavioral state (IDLE, WALKING, SLEEPING, etc.)
+        current_action: Current animation action being performed
+        animation_frame: Current frame index in the animation sequence
+        frame_timer: Timer for controlling frame advancement (in milliseconds)
+    
+    Methods:
+        update(asset_manager, delta_time_ms): Update pet's animation and state
+        _update_action_from_state(): Private method to map state to action
+        get_current_sprite(asset_manager): Get current sprite file path for rendering
+    """
+
     name: str
     x: int = 100
     y: int = 100
@@ -103,15 +138,15 @@ class Pet:
     animation_frame: int = 0
     frame_timer: int = 0
     
-    def update(self, asset_manager: PetAssetManager):
+    def update(self, asset_manager: PetAssetManager, delta_time_ms: int = 100):
         """Update pet's internal state and animation."""
         # Get current animation
         animation = asset_manager.get_animation(self.current_action)
         if animation and self.animation_frame < len(animation):
             pose = animation[self.animation_frame]
             
-            # Update frame timer
-            self.frame_timer += 1
+            # Update frame timer with actual elapsed time
+            self.frame_timer += delta_time_ms
             if self.frame_timer >= pose["duration"]:
                 self.frame_timer = 0
                 self.animation_frame += 1
@@ -147,7 +182,28 @@ class Pet:
 
 
 class PetEngine:
-    """Main engine for managing desktop pets."""
+    """
+    Main engine for managing desktop pets.
+    
+    Attributes:
+        pets: List of all active Pet instances
+        asset_managers: Dictionary mapping pet types to their asset managers
+        running: Boolean flag indicating if the engine is active
+        screen_width: Width of the screen in pixels (default: 1920)
+        screen_height: Height of the screen in pixels (default: 1080)
+    
+    Methods:
+        __init__(): Initialize the pet engine
+        add_pet(pet_name, pet_type): Create and add a new pet to the engine
+        remove_pet(name): Remove a pet by its name, returns success status
+        get_pet(name): Retrieve a pet instance by name
+        update_pets(delta_time_ms): Update all pets' states and animations
+        _move_pet(pet): Private method to handle pet movement logic
+        start(): Start the main engine loop (blocking)
+        stop(): Stop the engine and exit the main loop
+        _display_status(): Private method to print status of all pets
+        get_pet_sprite(pet): Get current sprite path for rendering a pet
+    """
     
     def __init__(self):
         self.pets: List[Pet] = []
@@ -182,12 +238,12 @@ class PetEngine:
                 return pet
         return None
     
-    def update_pets(self):
+    def update_pets(self, delta_time_ms: int = 1000):
         """Update all pets in the engine."""
         for pet in self.pets:
             # Use the first available asset manager for now
             asset_manager = next(iter(self.asset_managers.values()))
-            pet.update(asset_manager)
+            pet.update(asset_manager, delta_time_ms)
             self._move_pet(pet)
     
     def _move_pet(self, pet: Pet):

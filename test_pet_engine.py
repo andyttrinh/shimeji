@@ -23,8 +23,12 @@ class PetEngineGUI:
         self.engine.screen_width = 800
         self.engine.screen_height = 600
         
-        # Add a pet
-        self.pet = self.engine.add_pet("TestPet", "Patamon Shimeji")
+        # Add pets for both types
+        self.patamon_pet = self.engine.add_pet("PatamonTest", "Patamon Shimeji")
+        self.charmander_pet = self.engine.add_pet("CharmanderTest", "Charmander Shimeji")
+        
+        # Start with Patamon
+        self.current_pet = self.patamon_pet
         
         # Debug assets
         self.debug_assets()
@@ -44,32 +48,40 @@ class PetEngineGUI:
         
         # Canvas for displaying the pet
         self.canvas = tk.Canvas(main_frame, width=600, height=400, bg="white")
-        self.canvas.grid(row=0, column=0, columnspan=2, pady=10)
+        self.canvas.grid(row=0, column=0, columnspan=3, pady=10)
         
         # Control buttons
         ttk.Button(main_frame, text="Start", command=self.start_animation).grid(row=1, column=0, pady=5)
         ttk.Button(main_frame, text="Stop", command=self.stop_animation).grid(row=1, column=1, pady=5)
         
+        # Pet selector
+        ttk.Label(main_frame, text="Select Pet:").grid(row=1, column=2, pady=5)
+        self.pet_var = tk.StringVar(value="Patamon")
+        pet_combo = ttk.Combobox(main_frame, textvariable=self.pet_var, 
+                                values=["Patamon", "Charmander"])
+        pet_combo.grid(row=1, column=3, pady=5)
+        pet_combo.bind("<<ComboboxSelected>>", self.change_pet)
+        
         # Status label
         self.status_label = ttk.Label(main_frame, text="Ready")
-        self.status_label.grid(row=2, column=0, columnspan=2, pady=5)
+        self.status_label.grid(row=2, column=0, columnspan=4, pady=5)
         
         # Pet info label
         self.pet_info_label = ttk.Label(main_frame, text="")
-        self.pet_info_label.grid(row=3, column=0, columnspan=2, pady=5)
+        self.pet_info_label.grid(row=3, column=0, columnspan=4, pady=5)
         
-        # Action selector (instead of state selector)
+        # Action selector
         ttk.Label(main_frame, text="Change Action:").grid(row=4, column=0, pady=5)
         self.action_var = tk.StringVar(value="Stand")
         
-        # Get available actions from asset manager
-        asset_manager = next(iter(self.engine.asset_managers.values()))
-        available_actions = asset_manager.get_available_actions()
+        # Create action combo first
+        self.action_combo = ttk.Combobox(main_frame, textvariable=self.action_var, 
+                                        values=[])
+        self.action_combo.grid(row=4, column=1, pady=5)
+        self.action_combo.bind("<<ComboboxSelected>>", self.change_action)
         
-        action_combo = ttk.Combobox(main_frame, textvariable=self.action_var, 
-                                   values=available_actions)
-        action_combo.grid(row=4, column=1, pady=5)
-        action_combo.bind("<<ComboboxSelected>>", self.change_action)
+        # Now update the action list after action_combo is created
+        self.update_action_list()
         
     def load_and_display_image(self, image_path):
         """Load and display an image on the canvas."""
@@ -141,19 +153,19 @@ class PetEngineGUI:
         if not self.running:
             return
             
-        # Update pet
-        self.engine.update_pets()
+        # Update current pet with actual time delta
+        asset_manager = self.get_current_asset_manager()
+        self.current_pet.update(asset_manager, 100)
         
         # Get current sprite
-        sprite_path = self.engine.get_pet_sprite(self.pet)
+        sprite_path = self.current_pet.get_current_sprite(asset_manager)
         
         # Debug: Print sprite path and asset info
         print(f"Debug - Sprite path: {sprite_path}")
-        print(f"Debug - Pet action: {self.pet.current_action}")
-        print(f"Debug - Animation frame: {self.pet.animation_frame}")
+        print(f"Debug - Pet action: {self.current_pet.current_action}")
+        print(f"Debug - Animation frame: {self.current_pet.animation_frame}")
         
         # Check asset manager
-        asset_manager = next(iter(self.engine.asset_managers.values()))
         print(f"Debug - Available sprites: {list(asset_manager.sprites.keys())[:5]}...")
         print(f"Debug - Available actions: {list(asset_manager.animations.keys())[:5]}...")
         
@@ -164,8 +176,9 @@ class PetEngineGUI:
             print("Debug - No sprite path returned!")
         
         # Update status
-        self.status_label.config(text=f"State: {self.pet.state.value} | Action: {self.pet.current_action}")
-        self.pet_info_label.config(text=f"Position: ({self.pet.x}, {self.pet.y}) | Frame: {self.pet.animation_frame}")
+        pet_name = "Patamon" if self.current_pet == self.patamon_pet else "Charmander"
+        self.status_label.config(text=f"{pet_name}: {self.current_pet.current_action}")
+        self.pet_info_label.config(text=f"Position: ({self.current_pet.x}, {self.current_pet.y}) | Frame: {self.current_pet.animation_frame}")
         
         # Schedule next update
         if self.running:
@@ -182,12 +195,47 @@ class PetEngineGUI:
         self.running = False
         self.status_label.config(text="Animation stopped")
     
+    def change_pet(self, event=None):
+        """Change the current pet being displayed."""
+        pet_name = self.pet_var.get()
+        if pet_name == "Patamon":
+            self.current_pet = self.patamon_pet
+        else:
+            self.current_pet = self.charmander_pet
+        
+        # Update action list for the new pet
+        self.update_action_list()
+        
+        # Reset action to first available one
+        asset_manager = self.get_current_asset_manager()
+        available_actions = asset_manager.get_available_actions()
+        if available_actions:
+            self.action_var.set(available_actions[0])
+            self.current_pet.current_action = available_actions[0]
+            self.current_pet.animation_frame = 0
+            self.current_pet.frame_timer = 0
+        
+        self.status_label.config(text=f"Switched to {pet_name}")
+    
+    def update_action_list(self):
+        """Update the action dropdown with current pet's available actions."""
+        asset_manager = self.get_current_asset_manager()
+        available_actions = asset_manager.get_available_actions()
+        self.action_combo['values'] = available_actions
+        if available_actions and self.action_var.get() not in available_actions:
+            self.action_var.set(available_actions[0])
+    
+    def get_current_asset_manager(self):
+        """Get the asset manager for the current pet."""
+        pet_type = "Patamon Shimeji" if self.current_pet == self.patamon_pet else "Charmander Shimeji"
+        return self.engine.asset_managers[pet_type]
+    
     def change_action(self, event=None):
         """Change the pet's action directly."""
         new_action = self.action_var.get()
-        self.pet.current_action = new_action
-        self.pet.animation_frame = 0
-        self.pet.frame_timer = 0
+        self.current_pet.current_action = new_action
+        self.current_pet.animation_frame = 0
+        self.current_pet.frame_timer = 0
         self.status_label.config(text=f"Action changed to: {new_action}")
     
     def run(self):
